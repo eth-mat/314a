@@ -1,76 +1,63 @@
-import numpy as np
 import pandas as pd
-import os 
+import numpy as np
 
-
-#TODO: figure out how to pair the grab the correct year and area in yield to compare to correct val and area in z-index
-#TODO: put above info into a cvs for geoplotzindex to read from and follow directions from plotly. 
-
-
-# Estimate coefficients for linear regression
 def estimate_coef(x, y):
-    # number of observations
     n = np.size(x)
-
-    # means of x and y
-    m_x = np.mean(x)
-    m_y = np.mean(y)
-
-    # cross-deviation and deviation about x
+    m_x, m_y = np.mean(x), np.mean(y)
     SS_xy = np.sum(y * x) - n * m_y * m_x
     SS_xx = np.sum(x * x) - n * m_x * m_x
-
-    # regression coefficients
-    b_1 = SS_xy / SS_xx
+    b_1 = SS_xy / SS_xx if SS_xx != 0 else np.nan
     b_0 = m_y - b_1 * m_x
+    return b_0, b_1
 
-    return (b_0, b_1)
+def runLinearRegByANSI(file_path, output_path):
+    df = pd.read_csv(file_path)
 
-
-
-def runLinearReg():
     
-    # Assign directory
-    dataDirectory = r"C:\Users\mbrag\OneDrive\Documents\314A\314a\314 data"
+    df['Year'] = pd.to_numeric(df['Year'], errors='coerce')
+    df['Yield'] = pd.to_numeric(df['Yield'], errors='coerce')
+    df['Anomaly'] = pd.to_numeric(df['Z-index'], errors='coerce')
+    df.dropna(subset=['Year', 'Yield', 'Anomaly', 'ANSI'], inplace=True)
 
-# Iterate over files in directory
-    for name in os.listdir(dataDirectory):
-    # Open file
-        with open(os.path.join(dataDirectory, name)) as f:
-            df = pd.read_csv(f,
-            comment='#',
-            sep=",",
-            engine='python'
-    )
-        x = pd.to_numeric(df["Mean"], errors='coerce').to_numpy()
-        cropDirectory = r"C:\Users\mbrag\OneDrive\Documents\314a\Crop Yield by State (csv)" 
-        for name in os.listdir(cropDirectory):
-    # Open file
-            with open(os.path.join(cropDirectory, name)) as f2:
-                df = pd.read_csv(f,
-                comment='#',
-                sep=",",
-                engine='python'
-    )
-            df2 = pd.read_csv(f2, low_memory=False)
-            y = pd.to_numeric(df2["Value"].astype(str).str.replace(',', ''), errors='coerce').to_numpy()
+    df = df.sort_values(by='Year')
 
-    min_len = min(len(x), len(y))
-    x = x[:min_len]
-    y = y[:min_len]
+    results = []
 
-    mask = ~np.isnan(x) & ~np.isnan(y)
-    x = x[mask]
-    y = y[mask]
+    # Group by ANSI
+    for ansi, group in df.groupby('ANSI'):
+        start_year = int(group['Year'].min())
+        end_year = int(group['Year'].max())
 
-    print("x sample:", x[:5])
-    print("y sample:", y[:5])
+        for start in range(start_year, end_year + 1, 5):
+            end = start + 4
+            period = group[(group['Year'] >= start) & (group['Year'] <= end)]
 
-    b_0, b_1 = estimate_coef(x, y)
-    print(f"Estimated coefficients:\nb_0 = {b_0:.4f} \nb_1 = {b_1:.4f}")
+            if len(period) < 2:
+                continue
+
+            x = period['Z-index'].to_numpy()
+            y = period['Yield'].to_numpy()
+
+            b_0, b_1 = estimate_coef(x, y)
+
+            results.append({
+                'ANSI': ansi,
+                'Period': f"{start}-{end}",
+                'Start Year': start,
+                'End Year': end,
+                'Intercept (b0)': round(b_0, 4),
+                'Slope (b1)': round(b_1, 4),
+                'Data Points': len(period)
+            })
+
+    # Save to CSV
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(output_path, index=False)
+    print(f"Results saved to: {output_path}")
 
 
+file_path = 
+output_path = 
+runLinearRegByANSI(file_path, output_path)
 
-# Run the regression
-runLinearReg()
 
